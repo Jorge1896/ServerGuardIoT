@@ -1,0 +1,164 @@
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#101827"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SERVERGUARD IoT"
+            android:textColor="#38BDF8"
+            android:textStyle="bold"
+            android:textSize="18sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Panel de monitoreo"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:id="@+id/txtEstadoGeneral"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ESTADO: CONECTANDO"
+            android:textColor="#38BDF8"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="18dp" />
+
+        <TextView
+            android:id="@+id/txtUltimaActualizacion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Última actualización: sin datos"
+            android:textColor="#94A3B8"
+            android:textSize="13sp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TEMPERATURA"
+            android:textColor="#CBD5E1"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/txtTemperatura"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="-- °C"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="HUMEDAD"
+            android:textColor="#CBD5E1"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/txtHumedad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="-- %"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SEGURIDAD DEL RACK"
+            android:textColor="#CBD5E1"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/txtRack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SIN DATOS"
+            android:textColor="#94A3B8"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="VENTILADOR"
+            android:textColor="#CBD5E1"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/txtVentilador"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SIN DATOS"
+            android:textColor="#94A3B8"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btnSimular"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="GENERAR NUEVA LECTURA"
+            android:backgroundTint="#0284C7"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnRack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ABRIR / CERRAR RACK"
+            android:backgroundTint="#334155"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="10dp" />
+
+        <Button
+            android:id="@+id/btnHistorial"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="VER HISTORIAL"
+            android:backgroundTint="#0F766E"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="10dp" />
+
+        <TextView
+            android:id="@+id/txtAlerta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Consultando Firebase..."
+            android:textColor="#CBD5E1"
+            android:textSize="15sp"
+            android:layout_marginTop="22dp" />
+
+        <Button
+            android:id="@+id/btnCerrarSesion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CERRAR SESIÓN"
+            android:backgroundTint="#475569"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="28dp" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,42 @@
+
+# =====================================
+# SERVERGUARD IoT - GITIGNORE
+# =====================================
+
+# Android Studio y Gradle
+.gradle/
+.kotlin/
+.idea/
+*.iml
+
+# Archivos generados al compilar
+/build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Configuracion local
+local.properties
+
+# Archivos temporales
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Archivos de firma privados
+*.jks
+*.keystore
+*.key
+*.p12
+*.pem
+
+# Variables y credenciales privadas
+.env
+.env.*
+service-account*.json
+*firebase-adminsdk*.json
+
+# Configuracion Firebase para repositorio publico
+google-services.json

@@ -1,0 +1,10 @@
+
+# Archivos de compilacion del modulo app
+/build/
+
+# Archivos de firma privados
+*.jks
+*.keystore
+
+# Configuracion de Firebase
+/google-services.json
