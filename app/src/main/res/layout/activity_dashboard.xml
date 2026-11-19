@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView android:id="@+id/dashboardRoot" xmlns:android="http://schemas.android.com/apk/res/android"
  android:layout_width="match_parent" android:layout_height="match_parent"
  android:fillViewport="true" android:background="#101827">
  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -45,6 +45,8 @@
   <TextView android:id="@+id/txtComando" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="Comando: ninguno"
    android:textColor="#FBBF24"/>
+  <TextView android:id="@+id/txtConfirmacion" android:layout_width="match_parent" android:layout_height="wrap_content"
+   android:text="Confirmación: no disponible" android:textColor="#FBBF24" android:layout_marginTop="8dp"/>
   <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
    android:text="TEMPERATURAS CONFIGURABLES" android:textSize="18sp"
    android:textColor="#38BDF8" android:textStyle="bold" android:layout_marginTop="22dp"/>
