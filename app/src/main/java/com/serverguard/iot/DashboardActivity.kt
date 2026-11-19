@@ -189,8 +189,8 @@ class DashboardActivity : AppCompatActivity() {
                     txtAlerta.text = "Esperando datos de Wokwi"
                     return
                 }
-                val t = snapshot.child("temperatura").getValue(Number::class.java)?.toDouble()
-                val h = snapshot.child("humedad").getValue(Number::class.java)?.toDouble()
+                val t = snapshot.child("temperatura").value.let { it as? Number }?.toDouble()
+                val h = snapshot.child("humedad").value.let { it as? Number }?.toDouble()
                 val rack = snapshot.child("rack_abierto").getValue(Boolean::class.java)
                 val fan = snapshot.child("ventilador").getValue(Boolean::class.java)
                 val led = snapshot.child("led").getValue(Boolean::class.java)
@@ -223,9 +223,9 @@ class DashboardActivity : AppCompatActivity() {
         configuracionListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val min = snapshot.child("temperatura_minima")
-                    .getValue(Number::class.java)?.toDouble() ?: 18.0
+                    .value.let { it as? Number }?.toDouble() ?: 18.0
                 val max = snapshot.child("temperatura_maxima")
-                    .getValue(Number::class.java)?.toDouble() ?: 28.0
+                    .value.let { it as? Number }?.toDouble() ?: 28.0
                 txtLimites.text = "Límites guardados: $min °C / $max °C"
                 // No sobrescribir la edición del usuario mientras escribe.
                 if (!editMin.hasFocus()) editMin.setText(min.toString())
