@@ -3,6 +3,10 @@ package com.serverguard.iot
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -24,6 +28,18 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var configuracion: DatabaseReference
     private lateinit var comando: DatabaseReference
     private lateinit var conexionFirebase: DatabaseReference
+    private lateinit var confirmacion: DatabaseReference
+    private var confirmacionListener: ValueEventListener? = null
+    private lateinit var txtConfirmacion: TextView
+    private var ultimaConexionEsp32: Long? = null
+    private var declaradoEsp32: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val refrescar = object : Runnable {
+        override fun run() {
+            estadoEsp32()
+            handler.postDelayed(this, 5000L)
+        }
+    }
 
     private var telemetriaListener: ValueEventListener? = null
     private var configuracionListener: ValueEventListener? = null
@@ -54,10 +70,18 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         setContentView(R.layout.activity_dashboard)
+        val panel = findViewById<android.view.View>(R.id.dashboardRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(panel) { view, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(b.left, b.top + 12, b.right, b.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(panel)
         raiz = FirebaseDatabase.getInstance(databaseUrl).reference
         telemetria = raiz.child("serverguard").child("telemetria")
         configuracion = raiz.child("serverguard").child("configuracion")
         comando = raiz.child("serverguard").child("comando")
+        confirmacion = raiz.child("serverguard").child("confirmacion")
         conexionFirebase = FirebaseDatabase.getInstance(databaseUrl)
             .getReference(".info/connected")
 
@@ -70,6 +94,7 @@ class DashboardActivity : AppCompatActivity() {
         txtOtros = findViewById(R.id.txtOtros)
         txtAlerta = findViewById(R.id.txtAlerta)
         txtComando = findViewById(R.id.txtComando)
+        txtConfirmacion = findViewById(R.id.txtConfirmacion)
         txtLimites = findViewById(R.id.txtLimites)
         editMin = findViewById(R.id.editMin)
         editMax = findViewById(R.id.editMax)
@@ -93,6 +118,19 @@ class DashboardActivity : AppCompatActivity() {
             auth.signOut()
             irAlLogin()
         }
+    }
+
+    private fun estadoEsp32() {
+        val t = ultimaConexionEsp32
+        val reciente = t != null && t > 0L &&
+            t <= System.currentTimeMillis() + 60000L &&
+            System.currentTimeMillis() - t <= 15000L
+        txtEsp32.text = when {
+            reciente -> "ESP32: activo (heartbeat reciente)"
+            t != null -> "ESP32: sin comunicación reciente"
+            else -> "ESP32: ${declaradoEsp32 ?: "sin verificar"} (sin heartbeat)"
+        }
+        txtEsp32.setTextColor(Color.parseColor(if (reciente) "#4ADE80" else "#FBBF24"))
     }
 
     private fun asignarComando(id: Int, valor: String) {
@@ -181,6 +219,8 @@ class DashboardActivity : AppCompatActivity() {
             }
         }
         conexionFirebase.addValueEventListener(conexionListener!!)
+        handler.removeCallbacks(refrescar)
+        handler.post(refrescar)
 
         telemetriaListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -199,7 +239,9 @@ class DashboardActivity : AppCompatActivity() {
                 val declarado = snapshot.child("estado_conexion").getValue(String::class.java)
                 // El ESP32 aún no manda heartbeat. No interpretar una etiqueta antigua
                 // como prueba de que Wokwi sigue conectado.
-                txtEsp32.text = "ESP32 (último estado reportado): ${declarado ?: "desconocido"} (sin verificación en vivo)"
+                declaradoEsp32 = declarado
+                ultimaConexionEsp32 = (snapshot.child("ultima_conexion").value as? Number)?.toLong()
+                estadoEsp32()
                 txtTemperatura.text = "Temperatura: " + (t?.let {
                     String.format(Locale.getDefault(), "%.1f °C", it) } ?: "--")
                 txtHumedad.text = "Humedad: " + (h?.let {
@@ -236,6 +278,19 @@ class DashboardActivity : AppCompatActivity() {
             }
         }
         configuracion.addValueEventListener(configuracionListener!!)
+        confirmacionListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val cmd = snapshot.child("comando").getValue(String::class.java)
+                val res = snapshot.child("resultado").getValue(String::class.java)
+                txtConfirmacion.text = if (cmd != null && res != null)
+                    "Última confirmación reportada: $cmd / $res"
+                    else "Confirmación ESP32: no disponible"
+            }
+            override fun onCancelled(error: DatabaseError) {
+                txtConfirmacion.text = "Confirmación: ${error.message}"
+            }
+        }
+        confirmacion.addValueEventListener(confirmacionListener!!)
     }
 
     private fun estado(valor: Boolean?, positivo: String, negativo: String): String =
@@ -250,13 +305,16 @@ class DashboardActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        handler.removeCallbacks(refrescar)
         if (::conexionFirebase.isInitialized) {
             conexionListener?.let { conexionFirebase.removeEventListener(it) }
             telemetriaListener?.let { telemetria.removeEventListener(it) }
             configuracionListener?.let { configuracion.removeEventListener(it) }
+            confirmacionListener?.let { confirmacion.removeEventListener(it) }
         }
         conexionListener = null
         telemetriaListener = null
         configuracionListener = null
+        confirmacionListener = null
     }
 }
