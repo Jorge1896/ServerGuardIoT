@@ -4,8 +4,7 @@ Proyecto académico de monitoreo ambiental y control remoto de una sala de servi
 
 ## Estado de integración (24/11/2026)
 
-- **Compilación confirmada por el desarrollador:** `assembleDebug` correcto hasta el commit `7d28328`.
-- **Cambios Android posteriores:** pendientes de recompilar y probar en el dispositivo/emulador.
+- **Compilación y pruebas confirmadas por el desarrollador:** `assembleDebug` y `testDebugUnitTest` fueron exitosos tras las mejoras de Android; las pantallas principales también fueron verificadas. Cualquier cambio posterior requiere repetir la compilación.
 - **Protocolo v1:** se verificó Android → Firebase mediante comandos de texto y simulación manual de confirmaciones. **No se ha verificado ESP32 extremo a extremo**.
 - **Protocolo v2:** código de repositorio preparado y reglas de Realtime Database publicadas por el desarrollador. **No está activado en los botones** y requiere firmware Wokwi compatible.
 - Los valores de telemetría usados inicialmente (24 °C, 50 %) fueron datos de ejemplo cargados manualmente; no prueban un sensor activo.
@@ -35,7 +34,7 @@ El Dashboard evalúa temperatura fuera de límites, rack abierto, alarma activad
 /historial/sala_principal/{id}       # historial heredado, no el nuevo ESP32
 ```
 
-Documentos para el equipo: [Integración v1](docs/INTEGRACION_WOKWI.md) y [protocolo v2](docs/PROTOCOLO_V2.md).
+**Inicio recomendado para nuevos integrantes:** [Guía de continuación del equipo](docs/GUIA_CONTINUACION_EQUIPO.md). Documentos técnicos: [Integración v1](docs/INTEGRACION_WOKWI.md), [protocolo v2](docs/PROTOCOLO_V2.md) y [pruebas Android](docs/PRUEBAS_ANDROID.md).
 
 **Importante:** Firebase Realtime Database no conserva rutas vacías. No crear manualmente `{id}` como clave ni guardar cadenas vacías para mantener carpetas. Las reglas no deben hacerse públicas. No incluir contraseñas, tokens de acceso o claves privadas en el repositorio.
 
