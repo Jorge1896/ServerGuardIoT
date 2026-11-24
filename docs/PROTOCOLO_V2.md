@@ -1,6 +1,6 @@
 # Protocolo de órdenes v2 — propuesta de migración segura
 
-**Estado:** preparado para implementación; **NO activado** en Android ni en Firebase/Wokwi.  
+**Estado:** reglas de Realtime Database v2 publicadas por el responsable el 24/11/2026; repositorio Kotlin preparado, **NO activado en la interfaz Android ni probado con Wokwi**.  
 **Compatibilidad:** la app existente continúa enviando texto a `/serverguard/comando` (v1).
 
 ## Por qué cambiar
@@ -58,7 +58,7 @@ Respuestas: `EJECUTADO`, `RECHAZADO`, `ERROR`. Una solicitud sin respuesta perma
 
 ## Seguridad y reglas para revisión
 
-Las reglas actuales **no incluyen** `/serverguard/v2`: de momento estas rutas serán denegadas. Antes de habilitar v2 hay que publicar reglas con estas invariantes:
+Las reglas de `/serverguard/v2` fueron **publicadas por el responsable del proyecto el 24/11/2026**, pero su funcionamiento con un dispositivo ESP32 aún requiere pruebas. Las invariantes esperadas de esas reglas son:
 
 - Lectura de solicitudes y respuestas solo para Android autorizado o ESP32 autorizado.
 - Creación de solicitudes **solo Android autorizado** y únicamente cuando no existan; `creado_por === auth.uid`, comando de lista blanca y timestamp de servidor validado.
@@ -74,7 +74,7 @@ Las rutas `/serverguard/comando`, `/serverguard/confirmacion`, `/serverguard/tel
 1. Compartir este documento y `docs/INTEGRACION_WOKWI.md` con compañeros.
 2. Configurar identidad Firebase del ESP32 de forma segura y verificar que puede leer/escribir en rutas permitidas.
 3. Preparar firmware que procese v2 con IDs, sin dejar de soportar v1 hasta concluir la migración.
-4. Publicar reglas y probar v2 con datos de prueba.
+4. Verificar las reglas v2 ya publicadas y probarlas con datos de prueba autorizados.
 5. Activar en Android la implementación de v2 mediante una actualización coordinada.
 6. Probar ON/OFF, apertura/cierre, rechazos, reconexión, reintentos y repetición de un mismo comando con IDs distintos.
 
