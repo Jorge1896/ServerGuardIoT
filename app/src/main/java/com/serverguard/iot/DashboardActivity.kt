@@ -1,6 +1,15 @@
 package com.serverguard.iot
 
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -38,6 +47,20 @@ class DashboardActivity : AppCompatActivity() {
     private var limiteMinimo: Double? = null
     private var limiteMaximo: Double? = null
     private var hayTelemetria = false
+    private var ultimaFirmaAlerta: String? = null
+    private var notificacionesActivas = false
+    private lateinit var btnNotificaciones: Button
+    private val solicitarPermiso = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { permitido ->
+        if (permitido) {
+            guardarPreferenciaNotificaciones(true)
+            Toast.makeText(this, "Alertas locales activadas", Toast.LENGTH_SHORT).show()
+        } else {
+            guardarPreferenciaNotificaciones(false)
+            Toast.makeText(this, "No se concedió permiso de notificaciones", Toast.LENGTH_LONG).show()
+        }
+    }
     private lateinit var txtFechaMedicion: TextView
     private val handler = Handler(Looper.getMainLooper())
     private val refrescar = object : Runnable {
@@ -100,6 +123,12 @@ class DashboardActivity : AppCompatActivity() {
         editMin = findViewById(R.id.editMin)
         editMax = findViewById(R.id.editMax)
         btnGuardar = findViewById(R.id.btnGuardar)
+        btnNotificaciones = findViewById(R.id.btnNotificaciones)
+        notificacionesActivas = getSharedPreferences("serverguard_alertas", MODE_PRIVATE)
+            .getBoolean("activas", false)
+        actualizarBotonNotificaciones()
+        btnNotificaciones.setOnClickListener { cambiarNotificaciones() }
+        crearCanalNotificaciones()
 
         btnGuardar.setOnClickListener { guardarLimites() }
         findViewById<Button>(R.id.btnControlRemoto).setOnClickListener {
@@ -146,6 +175,59 @@ class DashboardActivity : AppCompatActivity() {
             else -> "#FBBF24"
         }
         txtAlerta.setTextColor(Color.parseColor(color))
+        val firma = if (evaluacion.nivel == EstadoMonitoreo.Nivel.CRITICO && reciente)
+            evaluacion.mensaje else null
+        if (ultimaFirmaAlerta != firma) {
+            ultimaFirmaAlerta = firma
+            if (firma != null && notificacionesActivas) avisar(firma)
+        }
+    }
+
+    private fun guardarPreferenciaNotificaciones(valor: Boolean) {
+        notificacionesActivas = valor
+        getSharedPreferences("serverguard_alertas", MODE_PRIVATE)
+            .edit().putBoolean("activas", valor).apply()
+        actualizarBotonNotificaciones()
+        ultimaFirmaAlerta = null
+    }
+
+    private fun actualizarBotonNotificaciones() {
+        btnNotificaciones.text = if (notificacionesActivas)
+            "DESACTIVAR ALERTAS LOCALES" else "ACTIVAR ALERTAS LOCALES"
+    }
+
+    private fun cambiarNotificaciones() {
+        if (notificacionesActivas) {
+            guardarPreferenciaNotificaciones(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED) {
+            solicitarPermiso.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else guardarPreferenciaNotificaciones(true)
+    }
+
+    private fun crearCanalNotificaciones() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel("serverguard_alertas", "Alertas ServerGuard", NotificationManager.IMPORTANCE_HIGH)
+        )
+    }
+
+    private fun avisar(mensaje: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificacion = Notification.Builder(this, "serverguard_alertas")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Alerta en sala de servidores")
+            .setContentText(mensaje)
+            .setStyle(Notification.BigTextStyle().bigText(mensaje))
+            .setAutoCancel(true)
+            .build()
+        manager.notify(1001, notificacion)
     }
 
     private fun guardarLimites() {
