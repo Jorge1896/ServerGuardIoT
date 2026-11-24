@@ -26,6 +26,7 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var raiz: DatabaseReference
     private lateinit var telemetria: DatabaseReference
     private lateinit var configuracion: DatabaseReference
+    private lateinit var conexionFirebase: DatabaseReference
     private var ultimaConexionEsp32: Long? = null
     private var declaradoEsp32: String? = null
     private val handler = Handler(Looper.getMainLooper())
