@@ -1,6 +1,7 @@
 package com.serverguard.iot
 
 import android.graphics.Color
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -93,7 +94,8 @@ class ControlRemotoActivity : AppCompatActivity() {
         botones.forEach {
             it.isEnabled = habilitado
             // Evita que el tema vuelva ilegible el texto de los botones deshabilitados.
-            it.alpha = if (habilitado) 1f else 0.72f
+            it.alpha = if (habilitado) 1f else 0.85f
+            it.backgroundTintList = ColorStateList.valueOf(Color.parseColor(if (habilitado) "#6853A4" else "#4B5270"))
             it.setTextColor(Color.WHITE)
         }
     }
@@ -107,7 +109,7 @@ class ControlRemotoActivity : AppCompatActivity() {
                 val transcurrido = if (pendienteDesde > 0L)
                     (System.currentTimeMillis() - pendienteDesde) / 1000L else 0L
                 if (transcurrido >= 30L)
-                    "Sin respuesta desde hace al menos 30 s. Comprueba Wokwi antes de reintentar."
+                    "Orden pendiente observada durante 30 s o más. Comprueba Wokwi; no se ha confirmado su ejecución."
                 else "Esperando a que Wokwi procese la orden. No se enviarán otras órdenes."
             }
             else -> "Listo para enviar órdenes. La ejecución requiere confirmación del ESP32."
