@@ -26,11 +26,6 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var raiz: DatabaseReference
     private lateinit var telemetria: DatabaseReference
     private lateinit var configuracion: DatabaseReference
-    private lateinit var comando: DatabaseReference
-    private lateinit var conexionFirebase: DatabaseReference
-    private lateinit var confirmacion: DatabaseReference
-    private var confirmacionListener: ValueEventListener? = null
-    private lateinit var txtConfirmacion: TextView
     private var ultimaConexionEsp32: Long? = null
     private var declaradoEsp32: String? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -53,16 +48,11 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var txtVentilador: TextView
     private lateinit var txtOtros: TextView
     private lateinit var txtAlerta: TextView
-    private lateinit var txtComando: TextView
     private lateinit var txtLimites: TextView
     private lateinit var editMin: EditText
     private lateinit var editMax: EditText
     private lateinit var btnGuardar: Button
-    private val botonesComando = mutableListOf<Button>()
     private var conectadoFirebase = false
-    private var envioEnCurso = false
-    private var comandoPendiente = true
-    private var comandoListener: ValueEventListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,8 +72,6 @@ class DashboardActivity : AppCompatActivity() {
         raiz = FirebaseDatabase.getInstance(databaseUrl).reference
         telemetria = raiz.child("serverguard").child("telemetria")
         configuracion = raiz.child("serverguard").child("configuracion")
-        comando = raiz.child("serverguard").child("comando")
-        confirmacion = raiz.child("serverguard").child("confirmacion")
         conexionFirebase = FirebaseDatabase.getInstance(databaseUrl)
             .getReference(".info/connected")
 
@@ -95,24 +83,15 @@ class DashboardActivity : AppCompatActivity() {
         txtVentilador = findViewById(R.id.txtVentilador)
         txtOtros = findViewById(R.id.txtOtros)
         txtAlerta = findViewById(R.id.txtAlerta)
-        txtComando = findViewById(R.id.txtComando)
-        txtConfirmacion = findViewById(R.id.txtConfirmacion)
         txtLimites = findViewById(R.id.txtLimites)
         editMin = findViewById(R.id.editMin)
         editMax = findViewById(R.id.editMax)
         btnGuardar = findViewById(R.id.btnGuardar)
 
-        asignarComando(R.id.btnAbrir, "DOOR_OPEN")
-        asignarComando(R.id.btnCerrar, "DOOR_CLOSE")
-        asignarComando(R.id.btnFanOn, "FAN_ON")
-        asignarComando(R.id.btnFanOff, "FAN_OFF")
-        asignarComando(R.id.btnLedOn, "LED_ON")
-        asignarComando(R.id.btnLedOff, "LED_OFF")
-        asignarComando(R.id.btnAlarmOn, "ALARM_ON")
-        asignarComando(R.id.btnAlarmOff, "ALARM_OFF")
-        actualizarBotones()
-
         btnGuardar.setOnClickListener { guardarLimites() }
+        findViewById<Button>(R.id.btnControlRemoto).setOnClickListener {
+            startActivity(Intent(this, ControlRemotoActivity::class.java))
+        }
         findViewById<Button>(R.id.btnHistorial).setOnClickListener {
             startActivity(Intent(this, HistorialActivity::class.java))
         }
@@ -135,53 +114,6 @@ class DashboardActivity : AppCompatActivity() {
         txtEsp32.setTextColor(Color.parseColor(if (reciente) "#4ADE80" else "#FBBF24"))
     }
 
-    private fun asignarComando(id: Int, valor: String) {
-        val boton = findViewById<Button>(id)
-        botonesComando.add(boton)
-        boton.setOnClickListener { enviarComando(valor) }
-    }
-
-    private fun actualizarBotones() {
-        botonesComando.forEach { it.isEnabled = conectadoFirebase && !envioEnCurso && !comandoPendiente }
-        btnGuardar.isEnabled = conectadoFirebase && !envioEnCurso
-    }
-
-    // El firmware de Wokwi lee /serverguard/comando como un string.
-    // La escritura NO prueba que el dispositivo haya ejecutado la orden.
-    private fun enviarComando(valor: String) {
-        if (!conectadoFirebase || envioEnCurso || comandoPendiente) return
-        envioEnCurso = true
-        actualizarBotones()
-        txtComando.text = "Enviando: $valor"
-        // Evitar sobrescribir un comando todavía pendiente.
-        comando.runTransaction(object : com.google.firebase.database.Transaction.Handler {
-            override fun doTransaction(data: com.google.firebase.database.MutableData):
-                com.google.firebase.database.Transaction.Result {
-                val actual = data.getValue(String::class.java)
-                return if (actual == null || actual == "NONE") {
-                    data.value = valor
-                    com.google.firebase.database.Transaction.success(data)
-                } else {
-                    com.google.firebase.database.Transaction.abort()
-                }
-            }
-
-            override fun onComplete(
-                error: DatabaseError?,
-                committed: Boolean,
-                currentData: DataSnapshot?
-            ) {
-                envioEnCurso = false
-                actualizarBotones()
-                txtComando.text = when {
-                    error != null -> "Error al enviar: ${error.message}"
-                    committed -> "Comando $valor enviado; ejecución NO confirmada"
-                    else -> "Existe un comando pendiente; intenta después"
-                }
-            }
-        })
-    }
-
     private fun guardarLimites() {
         val minima = editMin.text.toString().trim().replace(',', '.').toDoubleOrNull()
         val maxima = editMax.text.toString().trim().replace(',', '.').toDoubleOrNull()
@@ -199,7 +131,7 @@ class DashboardActivity : AppCompatActivity() {
             Toast.makeText(this, "Límites guardados; ESP32 debe leerlos", Toast.LENGTH_LONG).show()
         }.addOnFailureListener { error ->
             Toast.makeText(this, "Error: ${error.localizedMessage}", Toast.LENGTH_LONG).show()
-        }.addOnCompleteListener { actualizarBotones() }
+        }.addOnCompleteListener { btnGuardar.isEnabled = conectadoFirebase }
     }
 
     override fun onStart() {
@@ -212,31 +144,15 @@ class DashboardActivity : AppCompatActivity() {
                                    else "Firebase: desconectado"
                 txtFirebase.setTextColor(Color.parseColor(
                     if (conectadoFirebase) "#4ADE80" else "#F87171"))
-                actualizarBotones()
+                btnGuardar.isEnabled = conectadoFirebase
             }
             override fun onCancelled(error: DatabaseError) {
                 conectadoFirebase = false
                 txtFirebase.text = "Firebase: error de conexión"
-                actualizarBotones()
+                btnGuardar.isEnabled = conectadoFirebase
             }
         }
         conexionFirebase.addValueEventListener(conexionListener!!)
-        comandoListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val valor = snapshot.getValue(String::class.java)
-                comandoPendiente = valor != null && valor != "NONE"
-                txtComando.text = if (comandoPendiente)
-                    "Comando pendiente: ${valor ?: "desconocido"} (sin ejecución confirmada)"
-                else "Comando: ninguno pendiente"
-                actualizarBotones()
-            }
-            override fun onCancelled(error: DatabaseError) {
-                comandoPendiente = true
-                txtComando.text = "No se puede verificar la cola de comandos: ${error.message}"
-                actualizarBotones()
-            }
-        }
-        comando.addValueEventListener(comandoListener!!)
         handler.removeCallbacks(refrescar)
         handler.post(refrescar)
 
@@ -296,19 +212,6 @@ class DashboardActivity : AppCompatActivity() {
             }
         }
         configuracion.addValueEventListener(configuracionListener!!)
-        confirmacionListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val cmd = snapshot.child("comando").getValue(String::class.java)
-                val res = snapshot.child("resultado").getValue(String::class.java)
-                txtConfirmacion.text = if (cmd != null && res != null)
-                    "Última confirmación reportada: $cmd / $res"
-                    else "Confirmación ESP32: no disponible"
-            }
-            override fun onCancelled(error: DatabaseError) {
-                txtConfirmacion.text = "Confirmación: ${error.message}"
-            }
-        }
-        confirmacion.addValueEventListener(confirmacionListener!!)
     }
 
     private fun estado(valor: Boolean?, positivo: String, negativo: String): String =
@@ -328,13 +231,9 @@ class DashboardActivity : AppCompatActivity() {
             conexionListener?.let { conexionFirebase.removeEventListener(it) }
             telemetriaListener?.let { telemetria.removeEventListener(it) }
             configuracionListener?.let { configuracion.removeEventListener(it) }
-            comandoListener?.let { comando.removeEventListener(it) }
-            confirmacionListener?.let { confirmacion.removeEventListener(it) }
         }
         conexionListener = null
         telemetriaListener = null
         configuracionListener = null
-        comandoListener = null
-        confirmacionListener = null
     }
 }
