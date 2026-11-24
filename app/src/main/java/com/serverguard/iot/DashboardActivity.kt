@@ -61,6 +61,8 @@ class DashboardActivity : AppCompatActivity() {
     private val botonesComando = mutableListOf<Button>()
     private var conectadoFirebase = false
     private var envioEnCurso = false
+    private var comandoPendiente = true
+    private var comandoListener: ValueEventListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,14 +142,14 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun actualizarBotones() {
-        botonesComando.forEach { it.isEnabled = conectadoFirebase && !envioEnCurso }
+        botonesComando.forEach { it.isEnabled = conectadoFirebase && !envioEnCurso && !comandoPendiente }
         btnGuardar.isEnabled = conectadoFirebase && !envioEnCurso
     }
 
     // El firmware de Wokwi lee /serverguard/comando como un string.
     // La escritura NO prueba que el dispositivo haya ejecutado la orden.
     private fun enviarComando(valor: String) {
-        if (!conectadoFirebase || envioEnCurso) return
+        if (!conectadoFirebase || envioEnCurso || comandoPendiente) return
         envioEnCurso = true
         actualizarBotones()
         txtComando.text = "Enviando: $valor"
@@ -219,6 +221,22 @@ class DashboardActivity : AppCompatActivity() {
             }
         }
         conexionFirebase.addValueEventListener(conexionListener!!)
+        comandoListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val valor = snapshot.getValue(String::class.java)
+                comandoPendiente = valor != null && valor != "NONE"
+                txtComando.text = if (comandoPendiente)
+                    "Comando pendiente: ${valor ?: "desconocido"} (sin ejecución confirmada)"
+                else "Comando: ninguno pendiente"
+                actualizarBotones()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                comandoPendiente = true
+                txtComando.text = "No se puede verificar la cola de comandos: ${error.message}"
+                actualizarBotones()
+            }
+        }
+        comando.addValueEventListener(comandoListener!!)
         handler.removeCallbacks(refrescar)
         handler.post(refrescar)
 
@@ -310,11 +328,13 @@ class DashboardActivity : AppCompatActivity() {
             conexionListener?.let { conexionFirebase.removeEventListener(it) }
             telemetriaListener?.let { telemetria.removeEventListener(it) }
             configuracionListener?.let { configuracion.removeEventListener(it) }
+            comandoListener?.let { comando.removeEventListener(it) }
             confirmacionListener?.let { confirmacion.removeEventListener(it) }
         }
         conexionListener = null
         telemetriaListener = null
         configuracionListener = null
+        comandoListener = null
         confirmacionListener = null
     }
 }
