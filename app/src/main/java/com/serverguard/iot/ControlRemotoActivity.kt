@@ -38,6 +38,10 @@ class ControlRemotoActivity : AppCompatActivity() {
     private var recibidoPrimerEstado = false
     private var pendienteDesde = 0L
     private var valorPendiente: String? = null
+    private var ordenLocal: String? = null
+    private var ultimaRespuesta: String? = null
+    private var esperandoConfirmacion = false
+    private var respuestaCompatible = false
     private val handler = Handler(Looper.getMainLooper())
     private val verificarEspera = object : Runnable {
         override fun run() {
@@ -112,6 +116,8 @@ class ControlRemotoActivity : AppCompatActivity() {
                     "Orden pendiente observada durante 30 s o más. Comprueba Wokwi; no se ha confirmado su ejecución."
                 else "Esperando a que Wokwi procese la orden. No se enviarán otras órdenes."
             }
+            esperandoConfirmacion && !comandoPendiente -> "El ESP32 retiró la orden, pero no hay una respuesta coincidente nueva."
+            respuestaCompatible -> "Respuesta compatible observada. Sin ID único aún no se puede verificar la correspondencia exacta."
             else -> "Listo para enviar órdenes. La ejecución requiere confirmación del ESP32."
         }
         txtAviso.setTextColor(
@@ -136,7 +142,12 @@ class ControlRemotoActivity : AppCompatActivity() {
                 enviando = false
                 txtEstado.text = when {
                     error != null -> "No se envió la orden: ${error.message}"
-                    committed -> "Orden enviada: $valor (ejecución NO confirmada)"
+                    committed -> {
+                        ordenLocal = valor
+                        esperandoConfirmacion = true
+                        respuestaCompatible = false
+                        "Orden enviada: $valor (ejecución pendiente de confirmar)"
+                    }
                     else -> "Ya existe una orden pendiente."
                 }
                 actualizarBotones()
@@ -180,7 +191,9 @@ class ControlRemotoActivity : AppCompatActivity() {
                 } else {
                     valorPendiente = null
                     pendienteDesde = 0L
-                    txtEstado.text = "Comando: ninguno pendiente"
+                    txtEstado.text = if (esperandoConfirmacion)
+                        "Orden retirada: esperando confirmación de Wokwi"
+                    else "Comando: ninguno pendiente"
                 }
                 actualizarBotones()
                 actualizarAviso()
@@ -199,9 +212,20 @@ class ControlRemotoActivity : AppCompatActivity() {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val c = snapshot.child("comando").getValue(String::class.java)
                 val r = snapshot.child("resultado").getValue(String::class.java)
-                txtConfirmacion.text = if (c != null && r != null)
-                    "Última confirmación publicada: $c / $r"
+                val respuesta = if (c != null && r != null) "$c/$r" else null
+                val cambiada = respuesta != null && respuesta != ultimaRespuesta
+                if (esperandoConfirmacion && cambiada && c == ordenLocal &&
+                    (r == "EJECUTADO" || r == "RECHAZADO" || r == "ERROR")) {
+                    respuestaCompatible = true
+                    esperandoConfirmacion = false
+                }
+                ultimaRespuesta = respuesta
+                txtConfirmacion.text = if (respuesta != null)
+                    "Última confirmación publicada: $respuesta" +
+                        if (respuestaCompatible && c == ordenLocal)
+                            " (compatible con orden local; sin ID único)" else ""
                 else "Confirmación: todavía no disponible"
+                actualizarAviso()
             }
             override fun onCancelled(error: DatabaseError) {
                 txtConfirmacion.text = "Error al leer confirmación: ${error.message}"
