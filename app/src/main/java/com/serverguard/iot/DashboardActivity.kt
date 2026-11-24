@@ -19,6 +19,8 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 
 class DashboardActivity : AppCompatActivity() {
     private val databaseUrl = "https://serverguardiot-default-rtdb.firebaseio.com/"
@@ -29,10 +31,19 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var conexionFirebase: DatabaseReference
     private var ultimaConexionEsp32: Long? = null
     private var declaradoEsp32: String? = null
+    private var temperaturaActual: Double? = null
+    private var rackActual: Boolean? = null
+    private var alarmaActual: Boolean? = null
+    private var alertaActual: Boolean? = null
+    private var limiteMinimo: Double? = null
+    private var limiteMaximo: Double? = null
+    private var hayTelemetria = false
+    private lateinit var txtFechaMedicion: TextView
     private val handler = Handler(Looper.getMainLooper())
     private val refrescar = object : Runnable {
         override fun run() {
             estadoEsp32()
+            actualizarAlerta()
             handler.postDelayed(this, 5000L)
         }
     }
@@ -84,6 +95,7 @@ class DashboardActivity : AppCompatActivity() {
         txtVentilador = findViewById(R.id.txtVentilador)
         txtOtros = findViewById(R.id.txtOtros)
         txtAlerta = findViewById(R.id.txtAlerta)
+        txtFechaMedicion = findViewById(R.id.txtFechaMedicion)
         txtLimites = findViewById(R.id.txtLimites)
         editMin = findViewById(R.id.editMin)
         editMax = findViewById(R.id.editMax)
@@ -104,9 +116,7 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun estadoEsp32() {
         val t = ultimaConexionEsp32
-        val reciente = t != null && t > 0L &&
-            t <= System.currentTimeMillis() + 60000L &&
-            System.currentTimeMillis() - t <= 15000L
+        val reciente = EstadoMonitoreo.heartbeatReciente(t, System.currentTimeMillis())
         txtEsp32.text = when {
             reciente -> "ESP32: activo (heartbeat reciente)"
             t != null -> "ESP32: sin comunicación reciente"
@@ -115,11 +125,34 @@ class DashboardActivity : AppCompatActivity() {
         txtEsp32.setTextColor(Color.parseColor(if (reciente) "#4ADE80" else "#FBBF24"))
     }
 
+    private fun actualizarAlerta() {
+        if (!hayTelemetria) {
+            txtAlerta.text = "Esperando telemetría del ESP32"
+            txtAlerta.setTextColor(Color.parseColor("#FBBF24"))
+            return
+        }
+        val evaluacion = EstadoMonitoreo.evaluar(
+            temperaturaActual, limiteMinimo, limiteMaximo,
+            rackActual, alarmaActual, alertaActual
+        )
+        val reciente = EstadoMonitoreo.heartbeatReciente(
+            ultimaConexionEsp32, System.currentTimeMillis()
+        )
+        val prefijo = if (reciente) "" else "Datos sin conexión ESP32 verificada. "
+        txtAlerta.text = prefijo + evaluacion.mensaje
+        val color = when (evaluacion.nivel) {
+            EstadoMonitoreo.Nivel.CRITICO -> "#F87171"
+            EstadoMonitoreo.Nivel.NORMAL -> if (reciente) "#4ADE80" else "#FBBF24"
+            else -> "#FBBF24"
+        }
+        txtAlerta.setTextColor(Color.parseColor(color))
+    }
+
     private fun guardarLimites() {
         val minima = editMin.text.toString().trim().replace(',', '.').toDoubleOrNull()
         val maxima = editMax.text.toString().trim().replace(',', '.').toDoubleOrNull()
         if (minima == null || maxima == null || minima < -40.0 ||
-            maxima > 80.0 || minima >= maxima
+            minima > 80.0 || maxima < -40.0 || maxima > 80.0 || minima >= maxima
         ) {
             Toast.makeText(this, "Usa límites válidos (-40 a 80 °C) y mínima menor a máxima",
                 Toast.LENGTH_LONG).show()
@@ -160,8 +193,10 @@ class DashboardActivity : AppCompatActivity() {
         telemetriaListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 if (!snapshot.exists()) {
+                    hayTelemetria = false
                     txtEsp32.text = "ESP32: sin telemetría"
-                    txtAlerta.text = "Esperando datos de Wokwi"
+                    txtFechaMedicion.text = "Última lectura: sin datos"
+                    actualizarAlerta()
                     return
                 }
                 val t = snapshot.child("temperatura").value.let { it as? Number }?.toDouble()
@@ -172,11 +207,21 @@ class DashboardActivity : AppCompatActivity() {
                 val alarma = snapshot.child("alarma").getValue(Boolean::class.java)
                 val alerta = snapshot.child("alerta_activa").getValue(Boolean::class.java)
                 val declarado = snapshot.child("estado_conexion").getValue(String::class.java)
+                hayTelemetria = true
+                temperaturaActual = t
+                rackActual = rack
+                alarmaActual = alarma
+                alertaActual = alerta
                 // El ESP32 aún no manda heartbeat. No interpretar una etiqueta antigua
                 // como prueba de que Wokwi sigue conectado.
                 declaradoEsp32 = declarado
                 ultimaConexionEsp32 = (snapshot.child("ultima_conexion").value as? Number)?.toLong()
                 estadoEsp32()
+                txtFechaMedicion.text = ultimaConexionEsp32?.let { marca ->
+                    "Última telemetría declarada: " +
+                        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+                            .format(Date(marca))
+                } ?: "Última telemetría: sin marca de tiempo del dispositivo"
                 txtTemperatura.text = "Temperatura: " + (t?.let {
                     String.format(Locale.getDefault(), "%.1f °C", it) } ?: "--")
                 txtHumedad.text = "Humedad: " + (h?.let {
@@ -185,13 +230,11 @@ class DashboardActivity : AppCompatActivity() {
                 txtVentilador.text = "Ventilador: " + estado(fan, "ENCENDIDO", "APAGADO")
                 txtOtros.text = "LED: " + estado(led, "ON", "OFF") +
                     " | Alarma: " + estado(alarma, "ACTIVA", "INACTIVA")
-                txtAlerta.text = if (alerta == true) "ALERTA REPORTADA POR ESP32"
-                    else "Sin alerta reportada"
-                txtAlerta.setTextColor(Color.parseColor(
-                    if (alerta == true) "#F87171" else "#4ADE80"))
+                actualizarAlerta()
             }
             override fun onCancelled(error: DatabaseError) {
-                txtEsp32.text = "ESP32: acceso a telemetría denegado"
+                hayTelemetria = false
+                txtEsp32.text = "ESP32: no se pudo leer telemetría"
                 txtAlerta.text = "Firebase: ${error.message}"
             }
         }
@@ -203,13 +246,19 @@ class DashboardActivity : AppCompatActivity() {
                     .value.let { it as? Number }?.toDouble() ?: 18.0
                 val max = snapshot.child("temperatura_maxima")
                     .value.let { it as? Number }?.toDouble() ?: 28.0
+                limiteMinimo = min
+                limiteMaximo = max
                 txtLimites.text = "Límites guardados: $min °C / $max °C"
+                actualizarAlerta()
                 // No sobrescribir la edición del usuario mientras escribe.
                 if (!editMin.hasFocus()) editMin.setText(min.toString())
                 if (!editMax.hasFocus()) editMax.setText(max.toString())
             }
             override fun onCancelled(error: DatabaseError) {
+                limiteMinimo = null
+                limiteMaximo = null
                 txtLimites.text = "Error al consultar límites: ${error.message}"
+                actualizarAlerta()
             }
         }
         configuracion.addValueEventListener(configuracionListener!!)
