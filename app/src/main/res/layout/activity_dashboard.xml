@@ -32,22 +32,6 @@
    android:layout_height="wrap_content" android:text="Esperando telemetría"
    android:textColor="#FBBF24" android:layout_marginTop="10dp"/>
   <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-   android:text="CONTROL REMOTO" android:textSize="18sp" android:textStyle="bold"
-   android:textColor="#38BDF8" android:layout_marginTop="22dp"/>
-  <Button android:id="@+id/btnAbrir" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ABRIR PUERTA"/>
-  <Button android:id="@+id/btnCerrar" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CERRAR PUERTA"/>
-  <Button android:id="@+id/btnFanOn" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ENCENDER VENTILADOR"/>
-  <Button android:id="@+id/btnFanOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="APAGAR VENTILADOR"/>
-  <Button android:id="@+id/btnLedOn" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ENCENDER LED"/>
-  <Button android:id="@+id/btnLedOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="APAGAR LED"/>
-  <Button android:id="@+id/btnAlarmOn" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ACTIVAR ALARMA"/>
-  <Button android:id="@+id/btnAlarmOff" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SILENCIAR ALARMA"/>
-  <TextView android:id="@+id/txtComando" android:layout_width="match_parent"
-   android:layout_height="wrap_content" android:text="Comando: ninguno"
-   android:textColor="#FBBF24"/>
-  <TextView android:id="@+id/txtConfirmacion" android:layout_width="match_parent" android:layout_height="wrap_content"
-   android:text="Confirmación: no disponible" android:textColor="#FBBF24" android:layout_marginTop="8dp"/>
-  <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
    android:text="TEMPERATURAS CONFIGURABLES" android:textSize="18sp"
    android:textColor="#38BDF8" android:textStyle="bold" android:layout_marginTop="22dp"/>
   <EditText android:id="@+id/editMin" android:layout_width="match_parent"
@@ -63,6 +47,9 @@
   <TextView android:id="@+id/txtLimites" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="Límites: aún no consultados"
    android:textColor="#CBD5E1"/>
+  <Button android:id="@+id/btnControlRemoto" android:layout_width="match_parent"
+   android:layout_height="wrap_content" android:text="IR A CONTROL REMOTO"
+   android:layout_marginTop="18dp"/>
   <Button android:id="@+id/btnHistorial" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="HISTORIAL ANTERIOR"
    android:layout_marginTop="18dp"/>
