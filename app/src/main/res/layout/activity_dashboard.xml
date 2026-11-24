@@ -13,6 +13,9 @@
   <TextView android:id="@+id/txtEsp32" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="ESP32: sin verificar"
    android:textColor="#FBBF24"/>
+  <TextView android:id="@+id/txtFechaMedicion" android:layout_width="match_parent"
+   android:layout_height="wrap_content" android:text="Última telemetría: sin datos"
+   android:textColor="#94A3B8" android:layout_marginTop="8dp"/>
   <TextView android:id="@+id/txtTemperatura" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="Temperatura: -- °C"
    android:textSize="24sp" android:textColor="#FFFFFF" android:layout_marginTop="20dp"/>
@@ -51,7 +54,7 @@
    android:layout_height="wrap_content" android:text="IR A CONTROL REMOTO"
    android:layout_marginTop="18dp"/>
   <Button android:id="@+id/btnHistorial" android:layout_width="match_parent"
-   android:layout_height="wrap_content" android:text="HISTORIAL ANTERIOR"
+   android:layout_height="wrap_content" android:text="VER HISTORIAL DE MEDICIONES"
    android:layout_marginTop="18dp"/>
   <Button android:id="@+id/btnCerrarSesion" android:layout_width="match_parent"
    android:layout_height="wrap_content" android:text="CERRAR SESIÓN"/>
