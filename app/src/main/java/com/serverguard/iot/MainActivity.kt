@@ -1,4 +1,3 @@
-
 package com.serverguard.iot
 
 import android.content.Intent
@@ -8,169 +7,155 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DatabaseException
+import com.google.firebase.database.FirebaseDatabase
 
 class MainActivity : AppCompatActivity() {
-
+    private val databaseUrl = "https://serverguardiot-default-rtdb.firebaseio.com/"
     private lateinit var auth: FirebaseAuth
-
     private lateinit var editCorreo: EditText
     private lateinit var editContrasena: EditText
     private lateinit var btnLogin: Button
     private lateinit var btnRegistrar: Button
+    private lateinit var btnRecuperar: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var textEstado: TextView
+    private var comprobando = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         auth = FirebaseAuth.getInstance()
-
-        // Si existe una sesión activa, abrir el panel
-        if (auth.currentUser != null) {
-            abrirDashboard()
-            return
-        }
-
         setContentView(R.layout.activity_main)
-
         editCorreo = findViewById(R.id.editCorreo)
         editContrasena = findViewById(R.id.editContrasena)
         btnLogin = findViewById(R.id.btnLogin)
         btnRegistrar = findViewById(R.id.btnRegistrar)
+        btnRecuperar = findViewById(R.id.btnRecuperar)
         progressBar = findViewById(R.id.progressBar)
         textEstado = findViewById(R.id.textEstado)
-
-        btnLogin.setOnClickListener {
-            iniciarSesion()
-        }
-
-        btnRegistrar.setOnClickListener {
-            registrarUsuario()
-        }
+        btnLogin.setOnClickListener { iniciarSesion() }
+        btnRegistrar.setOnClickListener { registrarUsuario() }
+        btnRecuperar.setOnClickListener { recuperarContrasena() }
+        if (auth.currentUser != null) comprobarAcceso()
     }
 
-    private fun validarCampos(): Pair<String, String>? {
-
+    private fun validarCorreo(): String? {
         val correo = editCorreo.text.toString().trim()
-        val contrasena = editContrasena.text.toString()
-
-        if (correo.isEmpty()) {
-            editCorreo.error = "Ingresa tu correo"
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(correo).matches()) {
+            editCorreo.error = "Ingresa un correo electrónico válido"
             editCorreo.requestFocus()
             return null
         }
+        return correo
+    }
 
-        if (!android.util.Patterns.EMAIL_ADDRESS
-                .matcher(correo).matches()) {
-            editCorreo.error = "Correo electrónico inválido"
-            editCorreo.requestFocus()
-            return null
-        }
-
-        if (contrasena.isEmpty()) {
-            editContrasena.error = "Ingresa tu contraseña"
+    private fun credenciales(esRegistro: Boolean): Pair<String, String>? {
+        val correo = validarCorreo() ?: return null
+        val clave = editContrasena.text.toString()
+        if (clave.isEmpty() || (esRegistro && clave.length < 8)) {
+            editContrasena.error = if (esRegistro)
+                "Para registrarte utiliza al menos 8 caracteres"
+            else "Ingresa la contraseña"
             editContrasena.requestFocus()
             return null
         }
-
-        if (contrasena.length < 6) {
-            editContrasena.error =
-                "La contraseña debe tener al menos 6 caracteres"
-            editContrasena.requestFocus()
-            return null
-        }
-
-        return Pair(correo, contrasena)
+        return correo to clave
     }
 
     private fun registrarUsuario() {
-
-        val datos = validarCampos() ?: return
-
+        val datos = credenciales(true) ?: return
         mostrarCarga(true)
-        textEstado.text = "Registrando usuario..."
-
-        auth.createUserWithEmailAndPassword(
-            datos.first,
-            datos.second
-        ).addOnCompleteListener(this) { tarea ->
-
-            mostrarCarga(false)
-
-            if (tarea.isSuccessful) {
-
-                Toast.makeText(
-                    this,
-                    "Cuenta creada correctamente",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                abrirDashboard()
-
-            } else {
-
-                val error = tarea.exception?.localizedMessage
-                    ?: "Error desconocido"
-
-                textEstado.text = "Error al registrar: $error"
+        textEstado.text = "Registrando cuenta..."
+        auth.createUserWithEmailAndPassword(datos.first, datos.second)
+            .addOnCompleteListener(this) { tarea ->
+                if (tarea.isSuccessful) {
+                    textEstado.text =
+                        "Cuenta creada. El administrador debe autorizar tu UID antes de acceder."
+                    comprobarAcceso()
+                } else {
+                    mostrarCarga(false)
+                    textEstado.text = "No fue posible crear la cuenta: " +
+                        (tarea.exception?.localizedMessage ?: "error desconocido")
+                }
             }
-        }
     }
 
     private fun iniciarSesion() {
-
-        val datos = validarCampos() ?: return
-
+        val datos = credenciales(false) ?: return
         mostrarCarga(true)
-        textEstado.text = "Iniciando sesión..."
-
-        auth.signInWithEmailAndPassword(
-            datos.first,
-            datos.second
-        ).addOnCompleteListener(this) { tarea ->
-
-            mostrarCarga(false)
-
-            if (tarea.isSuccessful) {
-
-                Toast.makeText(
-                    this,
-                    "Inicio de sesión exitoso",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                abrirDashboard()
-
-            } else {
-
-                val error = tarea.exception?.localizedMessage
-                    ?: "Credenciales incorrectas"
-
-                textEstado.text =
-                    "Error al iniciar sesión: $error"
+        textEstado.text = "Verificando credenciales..."
+        auth.signInWithEmailAndPassword(datos.first, datos.second)
+            .addOnCompleteListener(this) { tarea ->
+                if (tarea.isSuccessful) comprobarAcceso()
+                else {
+                    mostrarCarga(false)
+                    textEstado.text =
+                        "No se pudo iniciar sesión. Revisa tus credenciales y tu conexión."
+                }
             }
+    }
+
+    /**
+     * /autorizados no es legible por clientes según las reglas vigentes.
+     * Intentamos leer una ruta protegida por el mismo UID para comprobar acceso.
+     * La protección efectiva siempre la aplican las reglas de Firebase.
+     */
+    private fun comprobarAcceso() {
+        if (comprobando) return
+        if (auth.currentUser == null) {
+            mostrarCarga(false)
+            return
+        }
+        comprobando = true
+        mostrarCarga(true)
+        textEstado.text = "Comprobando acceso autorizado..."
+        FirebaseDatabase.getInstance(databaseUrl)
+            .getReference("serverguard/configuracion").get()
+            .addOnCompleteListener(this) { tarea ->
+                comprobando = false
+                mostrarCarga(false)
+                if (isFinishing || isDestroyed) return@addOnCompleteListener
+                if (tarea.isSuccessful) {
+                    abrirDashboard()
+                } else {
+                    val mensaje = tarea.exception?.localizedMessage.orEmpty()
+                    if (mensaje.contains("permission_denied", true) ||
+                        mensaje.contains("permission denied", true)) {
+                        auth.signOut()
+                        textEstado.text =
+                            "Acceso denegado: tu cuenta no está autorizada. Solicita al administrador que registre tu UID."
+                    } else {
+                        textEstado.text =
+                            "No se pudo verificar el acceso. Revisa Internet y vuelve a iniciar sesión."
+                    }
+                }
+            }
+    }
+
+    private fun recuperarContrasena() {
+        val correo = validarCorreo() ?: return
+        mostrarCarga(true)
+        textEstado.text = "Solicitando recuperación..."
+        auth.sendPasswordResetEmail(correo).addOnCompleteListener(this) {
+            mostrarCarga(false)
+            textEstado.text = if (it.isSuccessful)
+                "Si corresponde, revisa tu correo para restablecer la contraseña."
+            else "No se pudo solicitar la recuperación. Comprueba el correo y la conexión."
         }
     }
 
     private fun mostrarCarga(cargando: Boolean) {
-
-        progressBar.visibility =
-            if (cargando) View.VISIBLE else View.GONE
-
+        progressBar.visibility = if (cargando) View.VISIBLE else View.GONE
         btnLogin.isEnabled = !cargando
         btnRegistrar.isEnabled = !cargando
+        btnRecuperar.isEnabled = !cargando
     }
 
     private fun abrirDashboard() {
-
-        val intent = Intent(
-            this,
-            DashboardActivity::class.java
-        )
-
+        val intent = Intent(this, DashboardActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         startActivity(intent)
         finish()
     }

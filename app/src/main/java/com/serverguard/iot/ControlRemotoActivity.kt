@@ -1,0 +1,251 @@
+package com.serverguard.iot
+
+import android.graphics.Color
+import android.content.res.ColorStateList
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.widget.Button
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.MutableData
+import com.google.firebase.database.Transaction
+import com.google.firebase.database.ValueEventListener
+
+class ControlRemotoActivity : AppCompatActivity() {
+    private val url = "https://serverguardiot-default-rtdb.firebaseio.com/"
+    private lateinit var comando: DatabaseReference
+    private lateinit var confirmacion: DatabaseReference
+    private lateinit var conexion: DatabaseReference
+    private val botones = mutableListOf<Button>()
+    private lateinit var txtEstado: TextView
+    private lateinit var txtAviso: TextView
+    private lateinit var txtConfirmacion: TextView
+    private lateinit var txtConexion: TextView
+    private var listenerComando: ValueEventListener? = null
+    private var listenerConfirmacion: ValueEventListener? = null
+    private var listenerConexion: ValueEventListener? = null
+    private var conectado = false
+    private var comandoPendiente = true
+    private var enviando = false
+    private var recibidoPrimerEstado = false
+    private var pendienteDesde = 0L
+    private var valorPendiente: String? = null
+    private var ordenLocal: String? = null
+    private var ultimaRespuesta: String? = null
+    private var esperandoConfirmacion = false
+    private var respuestaCompatible = false
+    private val handler = Handler(Looper.getMainLooper())
+    private val verificarEspera = object : Runnable {
+        override fun run() {
+            actualizarAviso()
+            handler.postDelayed(this, 1000L)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (FirebaseAuth.getInstance().currentUser == null) {
+            finish()
+            return
+        }
+        setContentView(R.layout.activity_control_remoto)
+        val pantalla = findViewById<android.view.View>(R.id.controlRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(pantalla) { vista, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            vista.setPadding(b.left, b.top + (12 * resources.displayMetrics.density).toInt(),
+                b.right, b.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(pantalla)
+
+        val db = FirebaseDatabase.getInstance(url)
+        comando = db.getReference("serverguard/comando")
+        confirmacion = db.getReference("serverguard/confirmacion")
+        conexion = db.getReference(".info/connected")
+        txtEstado = findViewById(R.id.txtEstadoControl)
+        txtAviso = findViewById(R.id.txtAvisoControl)
+        txtConfirmacion = findViewById(R.id.txtConfirmacionControl)
+        txtConexion = findViewById(R.id.txtConexionControl)
+
+        enlazar(R.id.btnAbrir, "DOOR_OPEN")
+        enlazar(R.id.btnCerrar, "DOOR_CLOSE")
+        enlazar(R.id.btnFanOn, "FAN_ON")
+        enlazar(R.id.btnFanOff, "FAN_OFF")
+        enlazar(R.id.btnLedOn, "LED_ON")
+        enlazar(R.id.btnLedOff, "LED_OFF")
+        enlazar(R.id.btnAlarmOn, "ALARM_ON")
+        enlazar(R.id.btnAlarmOff, "ALARM_OFF")
+        findViewById<Button>(R.id.btnVolverDashboard).setOnClickListener { finish() }
+        actualizarBotones()
+    }
+
+    private fun enlazar(id: Int, valor: String) {
+        val boton = findViewById<Button>(id)
+        botones.add(boton)
+        boton.setOnClickListener { enviar(valor) }
+    }
+
+    private fun actualizarBotones() {
+        val habilitado = conectado && recibidoPrimerEstado && !comandoPendiente && !enviando
+        botones.forEach {
+            it.isEnabled = habilitado
+            // Evita que el tema vuelva ilegible el texto de los botones deshabilitados.
+            it.alpha = if (habilitado) 1f else 0.85f
+            it.backgroundTintList = ColorStateList.valueOf(Color.parseColor(if (habilitado) "#6853A4" else "#4B5270"))
+            it.setTextColor(Color.WHITE)
+        }
+    }
+
+    private fun actualizarAviso() {
+        txtAviso.text = when {
+            !conectado -> "Sin conexión con Firebase. No se pueden enviar órdenes."
+            !recibidoPrimerEstado -> "Consultando el comando actual..."
+            enviando -> "Guardando orden en Firebase..."
+            comandoPendiente -> {
+                val transcurrido = if (pendienteDesde > 0L)
+                    (System.currentTimeMillis() - pendienteDesde) / 1000L else 0L
+                if (transcurrido >= 30L)
+                    "Orden pendiente observada durante 30 s o más. Comprueba Wokwi; no se ha confirmado su ejecución."
+                else "Esperando a que Wokwi procese la orden. No se enviarán otras órdenes."
+            }
+            esperandoConfirmacion && !comandoPendiente -> "El ESP32 retiró la orden, pero no hay una respuesta coincidente nueva."
+            respuestaCompatible -> "Respuesta compatible observada. Sin ID único aún no se puede verificar la correspondencia exacta."
+            else -> "Listo para enviar órdenes. La ejecución requiere confirmación del ESP32."
+        }
+        txtAviso.setTextColor(
+            Color.parseColor(if (comandoPendiente || !conectado) "#FBBF24" else "#CBD5E1")
+        )
+    }
+
+    private fun enviar(valor: String) {
+        if (!conectado || comandoPendiente || enviando || !recibidoPrimerEstado) return
+        enviando = true
+        actualizarBotones()
+        actualizarAviso()
+        comando.runTransaction(object : Transaction.Handler {
+            override fun doTransaction(data: MutableData): Transaction.Result {
+                val actual = data.getValue(String::class.java)
+                return if (actual == null || actual == "NONE") {
+                    data.value = valor
+                    Transaction.success(data)
+                } else Transaction.abort()
+            }
+            override fun onComplete(error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?) {
+                enviando = false
+                txtEstado.text = when {
+                    error != null -> "No se envió la orden: ${error.message}"
+                    committed -> {
+                        ordenLocal = valor
+                        esperandoConfirmacion = true
+                        respuestaCompatible = false
+                        "Orden enviada: $valor (ejecución pendiente de confirmar)"
+                    }
+                    else -> "Ya existe una orden pendiente."
+                }
+                actualizarBotones()
+                actualizarAviso()
+            }
+        })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!::comando.isInitialized) return
+        recibidoPrimerEstado = false
+        comandoPendiente = true
+        actualizarBotones()
+        listenerConexion = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                conectado = snapshot.getValue(Boolean::class.java) == true
+                txtConexion.text = if (conectado) "Firebase: conectado" else "Firebase: desconectado"
+                txtConexion.setTextColor(Color.parseColor(if (conectado) "#4ADE80" else "#F87171"))
+                actualizarBotones()
+                actualizarAviso()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                conectado = false
+                txtConexion.text = "Error de conexión: ${error.message}"
+                actualizarBotones()
+                actualizarAviso()
+            }
+        }
+        conexion.addValueEventListener(listenerConexion!!)
+
+        listenerComando = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val actual = snapshot.getValue(String::class.java)
+                recibidoPrimerEstado = true
+                comandoPendiente = actual != null && actual != "NONE"
+                if (comandoPendiente) {
+                    if (valorPendiente != actual) pendienteDesde = System.currentTimeMillis()
+                    valorPendiente = actual
+                    txtEstado.text = "Comando pendiente: ${actual ?: "desconocido"}"
+                } else {
+                    valorPendiente = null
+                    pendienteDesde = 0L
+                    txtEstado.text = if (esperandoConfirmacion)
+                        "Orden retirada: esperando confirmación de Wokwi"
+                    else "Comando: ninguno pendiente"
+                }
+                actualizarBotones()
+                actualizarAviso()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                recibidoPrimerEstado = false
+                comandoPendiente = true
+                txtEstado.text = "No se pudo leer el comando: ${error.message}"
+                actualizarBotones()
+                actualizarAviso()
+            }
+        }
+        comando.addValueEventListener(listenerComando!!)
+
+        listenerConfirmacion = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val c = snapshot.child("comando").getValue(String::class.java)
+                val r = snapshot.child("resultado").getValue(String::class.java)
+                val respuesta = if (c != null && r != null) "$c/$r" else null
+                val cambiada = respuesta != null && respuesta != ultimaRespuesta
+                if (esperandoConfirmacion && cambiada && c == ordenLocal &&
+                    (r == "EJECUTADO" || r == "RECHAZADO" || r == "ERROR")) {
+                    respuestaCompatible = true
+                    esperandoConfirmacion = false
+                }
+                ultimaRespuesta = respuesta
+                txtConfirmacion.text = if (respuesta != null)
+                    "Última confirmación publicada: $respuesta" +
+                        if (respuestaCompatible && c == ordenLocal)
+                            " (compatible con orden local; sin ID único)" else ""
+                else "Confirmación: todavía no disponible"
+                actualizarAviso()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                txtConfirmacion.text = "Error al leer confirmación: ${error.message}"
+            }
+        }
+        confirmacion.addValueEventListener(listenerConfirmacion!!)
+        handler.removeCallbacks(verificarEspera)
+        handler.post(verificarEspera)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        handler.removeCallbacks(verificarEspera)
+        if (::comando.isInitialized) {
+            listenerComando?.let { comando.removeEventListener(it) }
+            listenerConfirmacion?.let { confirmacion.removeEventListener(it) }
+            listenerConexion?.let { conexion.removeEventListener(it) }
+        }
+        listenerComando = null
+        listenerConfirmacion = null
+        listenerConexion = null
+    }
+}

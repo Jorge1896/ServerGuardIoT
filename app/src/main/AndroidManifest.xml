@@ -36,6 +36,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ControlRemotoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".HistorialActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

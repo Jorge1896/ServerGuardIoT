@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/controlRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#101827">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="22dp"
+        android:orientation="vertical">
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="CONTROL REMOTO"
+            android:textSize="24sp" android:textStyle="bold" android:textColor="#38BDF8"/>
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textColor="#CBD5E1"
+            android:text="Control de puerta, ventilador, LED y alarma desde Firebase."/>
+        <TextView android:id="@+id/txtConexionControl"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="14dp" android:text="Firebase: conectando..."
+            android:textColor="#FBBF24"/>
+        <TextView android:id="@+id/txtEstadoControl"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:text="Consultando comandos..."
+            android:textSize="16sp" android:textStyle="bold" android:textColor="#FBBF24"/>
+        <TextView android:id="@+id/txtAvisoControl"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:padding="12dp"
+            android:background="#233047" android:textColor="#FBBF24"
+            android:text="Esperando estado de Firebase"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="PUERTA DEL RACK" android:layout_marginTop="20dp"
+            android:textStyle="bold" android:textColor="#38BDF8"/>
+        <Button android:id="@+id/btnAbrir" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="ABRIR PUERTA"/>
+        <Button android:id="@+id/btnCerrar" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="CERRAR PUERTA"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="VENTILADOR" android:layout_marginTop="16dp"
+            android:textStyle="bold" android:textColor="#38BDF8"/>
+        <Button android:id="@+id/btnFanOn" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="ENCENDER VENTILADOR"/>
+        <Button android:id="@+id/btnFanOff" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="APAGAR VENTILADOR"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="LED" android:layout_marginTop="16dp"
+            android:textStyle="bold" android:textColor="#38BDF8"/>
+        <Button android:id="@+id/btnLedOn" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="ENCENDER LED"/>
+        <Button android:id="@+id/btnLedOff" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="APAGAR LED"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="ALARMA" android:layout_marginTop="16dp"
+            android:textStyle="bold" android:textColor="#38BDF8"/>
+        <Button android:id="@+id/btnAlarmOn" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="ACTIVAR ALARMA"/>
+        <Button android:id="@+id/btnAlarmOff" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="SILENCIAR ALARMA"/>
+        <TextView android:id="@+id/txtConfirmacionControl"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="20dp" android:padding="12dp"
+            android:background="#233047" android:textColor="#FBBF24"
+            android:text="Confirmación: consultando..."/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textColor="#CBD5E1"
+            android:text="La última confirmación publicada no prueba por sí sola que el ESP32 ejecutó esta orden."/>
+        <Button android:id="@+id/btnVolverDashboard"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:text="VOLVER AL MONITOREO"/>
+    </LinearLayout>
+</ScrollView>

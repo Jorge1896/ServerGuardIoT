@@ -1,675 +1,371 @@
-
 package com.serverguard.iot
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ServerValue
 import com.google.firebase.database.ValueEventListener
+import java.util.Locale
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
-import kotlin.random.Random
 
 class DashboardActivity : AppCompatActivity() {
-
-    // ==========================================
-    // FIREBASE
-    // ==========================================
-
+    private val databaseUrl = "https://serverguardiot-default-rtdb.firebaseio.com/"
     private lateinit var auth: FirebaseAuth
-    private lateinit var database: DatabaseReference
-    private lateinit var referenciaSala: DatabaseReference
+    private lateinit var raiz: DatabaseReference
+    private lateinit var telemetria: DatabaseReference
+    private lateinit var configuracion: DatabaseReference
+    private lateinit var conexionFirebase: DatabaseReference
+    private var ultimaConexionEsp32: Long? = null
+    private var declaradoEsp32: String? = null
+    private var temperaturaActual: Double? = null
+    private var rackActual: Boolean? = null
+    private var alarmaActual: Boolean? = null
+    private var alertaActual: Boolean? = null
+    private var limiteMinimo: Double? = null
+    private var limiteMaximo: Double? = null
+    private var hayTelemetria = false
+    private var ultimaFirmaAlerta: String? = null
+    private var notificacionesActivas = false
+    private lateinit var btnNotificaciones: Button
+    private val solicitarPermiso = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { permitido ->
+        if (permitido) {
+            guardarPreferenciaNotificaciones(true)
+            Toast.makeText(this, "Alertas locales activadas", Toast.LENGTH_SHORT).show()
+        } else {
+            guardarPreferenciaNotificaciones(false)
+            Toast.makeText(this, "No se concedió permiso de notificaciones", Toast.LENGTH_LONG).show()
+        }
+    }
+    private lateinit var txtFechaMedicion: TextView
+    private val handler = Handler(Looper.getMainLooper())
+    private val refrescar = object : Runnable {
+        override fun run() {
+            estadoEsp32()
+            actualizarAlerta()
+            handler.postDelayed(this, 5000L)
+        }
+    }
 
-    private var listenerSala: ValueEventListener? = null
+    private var telemetriaListener: ValueEventListener? = null
+    private var configuracionListener: ValueEventListener? = null
+    private var conexionListener: ValueEventListener? = null
 
-    private val databaseUrl =
-        "https://serverguardiot-default-rtdb.firebaseio.com/"
-
-    // ==========================================
-    // INTERFAZ
-    // ==========================================
-
-    private lateinit var txtEstadoGeneral: TextView
+    private lateinit var txtFirebase: TextView
+    private lateinit var txtEsp32: TextView
     private lateinit var txtTemperatura: TextView
     private lateinit var txtHumedad: TextView
     private lateinit var txtRack: TextView
     private lateinit var txtVentilador: TextView
+    private lateinit var txtOtros: TextView
     private lateinit var txtAlerta: TextView
-    private lateinit var txtUltimaActualizacion: TextView
-
-    private lateinit var btnSimular: Button
-    private lateinit var btnRack: Button
-    private lateinit var btnHistorial: Button
-    private lateinit var btnCerrarSesion: Button
-
-    // ==========================================
-    // SENSORES SIMULADOS
-    // ==========================================
-
-    private var temperatura = 24.5
-    private var humedad = 48
-    private var rackAbierto = false
-
-    private var datosCargados = false
-    private var guardando = false
-
-    private val temperaturaMaxima = 28.0
-
-    // ==========================================
-    // NOTIFICACIONES
-    // ==========================================
-
-    private val canalAlertas = "serverguard_alertas"
-
-    private val idTemperatura = 1001
-    private val idRack = 1002
-
-    private var estadoAnteriorTemperatura: Boolean? = null
-    private var estadoAnteriorRack: Boolean? = null
-
-    private val solicitarNotificaciones =
-        registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { permitido ->
-
-            if (!permitido) {
-                Toast.makeText(
-                    this,
-                    "Las notificaciones están desactivadas",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-
-    // ==========================================
-    // INICIO
-    // ==========================================
+    private lateinit var txtLimites: TextView
+    private lateinit var editMin: EditText
+    private lateinit var editMax: EditText
+    private lateinit var btnGuardar: Button
+    private var conectadoFirebase = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        setContentView(R.layout.activity_dashboard)
-
         auth = FirebaseAuth.getInstance()
-
         if (auth.currentUser == null) {
-            volverAlLogin()
+            irAlLogin()
             return
         }
+        setContentView(R.layout.activity_dashboard)
+        val panel = findViewById<android.view.View>(R.id.dashboardRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(panel) { view, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(b.left, b.top + 12, b.right, b.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(panel)
+        raiz = FirebaseDatabase.getInstance(databaseUrl).reference
+        telemetria = raiz.child("serverguard").child("telemetria")
+        configuracion = raiz.child("serverguard").child("configuracion")
+        conexionFirebase = FirebaseDatabase.getInstance(databaseUrl)
+            .getReference(".info/connected")
 
-        database = FirebaseDatabase
-            .getInstance(databaseUrl)
-            .reference
-
-        referenciaSala = database
-            .child("salas")
-            .child("sala_principal")
-
-        txtEstadoGeneral = findViewById(R.id.txtEstadoGeneral)
+        txtFirebase = findViewById(R.id.txtFirebase)
+        txtEsp32 = findViewById(R.id.txtEsp32)
         txtTemperatura = findViewById(R.id.txtTemperatura)
         txtHumedad = findViewById(R.id.txtHumedad)
         txtRack = findViewById(R.id.txtRack)
         txtVentilador = findViewById(R.id.txtVentilador)
+        txtOtros = findViewById(R.id.txtOtros)
         txtAlerta = findViewById(R.id.txtAlerta)
-
-        txtUltimaActualizacion =
-            findViewById(R.id.txtUltimaActualizacion)
-
-        btnSimular = findViewById(R.id.btnSimular)
-        btnRack = findViewById(R.id.btnRack)
-        btnHistorial = findViewById(R.id.btnHistorial)
-        btnCerrarSesion = findViewById(R.id.btnCerrarSesion)
-
+        txtFechaMedicion = findViewById(R.id.txtFechaMedicion)
+        txtLimites = findViewById(R.id.txtLimites)
+        editMin = findViewById(R.id.editMin)
+        editMax = findViewById(R.id.editMax)
+        btnGuardar = findViewById(R.id.btnGuardar)
+        btnNotificaciones = findViewById(R.id.btnNotificaciones)
+        notificacionesActivas = getSharedPreferences("serverguard_alertas", MODE_PRIVATE)
+            .getBoolean("activas", false)
+        actualizarBotonNotificaciones()
+        btnNotificaciones.setOnClickListener { cambiarNotificaciones() }
         crearCanalNotificaciones()
-        solicitarPermisoNotificaciones()
 
-        actualizarBotones()
-
-        btnSimular.setOnClickListener {
-            generarLectura()
+        btnGuardar.setOnClickListener { guardarLimites() }
+        findViewById<Button>(R.id.btnControlRemoto).setOnClickListener {
+            startActivity(Intent(this, ControlRemotoActivity::class.java))
         }
-
-        btnRack.setOnClickListener {
-            cambiarRack()
+        findViewById<Button>(R.id.btnHistorial).setOnClickListener {
+            startActivity(Intent(this, HistorialActivity::class.java))
         }
-
-        btnHistorial.setOnClickListener {
-            startActivity(
-                Intent(this, HistorialActivity::class.java)
-            )
-        }
-
-        btnCerrarSesion.setOnClickListener {
+        findViewById<Button>(R.id.btnCerrarSesion).setOnClickListener {
             auth.signOut()
-            volverAlLogin()
+            irAlLogin()
         }
     }
 
-    // ==========================================
-    // PERMISO DE NOTIFICACIONES
-    // ==========================================
+    private fun estadoEsp32() {
+        val t = ultimaConexionEsp32
+        val reciente = EstadoMonitoreo.heartbeatReciente(t, System.currentTimeMillis())
+        txtEsp32.text = when {
+            reciente -> "ESP32: activo (heartbeat reciente)"
+            t != null -> "ESP32: sin comunicación reciente"
+            else -> "ESP32: ${declaradoEsp32 ?: "sin verificar"} (sin heartbeat)"
+        }
+        txtEsp32.setTextColor(Color.parseColor(if (reciente) "#4ADE80" else "#FBBF24"))
+    }
 
-    private fun solicitarPermisoNotificaciones() {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-
-            val permitido = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-
-            if (!permitido) {
-                solicitarNotificaciones.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            }
+    private fun actualizarAlerta() {
+        if (!hayTelemetria) {
+            txtAlerta.text = "Esperando telemetría del ESP32"
+            txtAlerta.setTextColor(Color.parseColor("#FBBF24"))
+            return
+        }
+        val evaluacion = EstadoMonitoreo.evaluar(
+            temperaturaActual, limiteMinimo, limiteMaximo,
+            rackActual, alarmaActual, alertaActual
+        )
+        val reciente = EstadoMonitoreo.heartbeatReciente(
+            ultimaConexionEsp32, System.currentTimeMillis()
+        )
+        val prefijo = if (reciente) "" else "Datos sin conexión ESP32 verificada. "
+        txtAlerta.text = prefijo + evaluacion.mensaje
+        val color = when (evaluacion.nivel) {
+            EstadoMonitoreo.Nivel.CRITICO -> "#F87171"
+            EstadoMonitoreo.Nivel.NORMAL -> if (reciente) "#4ADE80" else "#FBBF24"
+            else -> "#FBBF24"
+        }
+        txtAlerta.setTextColor(Color.parseColor(color))
+        val firma = if (evaluacion.nivel == EstadoMonitoreo.Nivel.CRITICO && reciente)
+            evaluacion.mensaje else null
+        if (ultimaFirmaAlerta != firma) {
+            ultimaFirmaAlerta = firma
+            if (firma != null && notificacionesActivas) avisar(firma)
         }
     }
 
-    // ==========================================
-    // CANAL DE ALERTAS
-    // ==========================================
+    private fun guardarPreferenciaNotificaciones(valor: Boolean) {
+        notificacionesActivas = valor
+        getSharedPreferences("serverguard_alertas", MODE_PRIVATE)
+            .edit().putBoolean("activas", valor).apply()
+        actualizarBotonNotificaciones()
+        ultimaFirmaAlerta = null
+    }
+
+    private fun actualizarBotonNotificaciones() {
+        btnNotificaciones.text = if (notificacionesActivas)
+            "DESACTIVAR ALERTAS LOCALES" else "ACTIVAR ALERTAS LOCALES"
+    }
+
+    private fun cambiarNotificaciones() {
+        if (notificacionesActivas) {
+            guardarPreferenciaNotificaciones(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED) {
+            solicitarPermiso.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else guardarPreferenciaNotificaciones(true)
+    }
 
     private fun crearCanalNotificaciones() {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
-            val canal = NotificationChannel(
-                canalAlertas,
-                "Alertas de ServerGuard",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description =
-                    "Alertas de temperatura y seguridad del rack"
-
-                enableVibration(true)
-            }
-
-            val administrador = getSystemService(
-                NotificationManager::class.java
-            )
-
-            administrador.createNotificationChannel(canal)
-        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel("serverguard_alertas", "Alertas ServerGuard", NotificationManager.IMPORTANCE_HIGH)
+        )
     }
 
-    // ==========================================
-    // MOSTRAR UNA NOTIFICACIÓN
-    // ==========================================
-
-    private fun mostrarNotificacion(
-        id: Int,
-        titulo: String,
-        mensaje: String
-    ) {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-
-            val permitido = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-
-            if (!permitido) return
-        }
-
-        val intent = Intent(
-            this,
-            DashboardActivity::class.java
-        )
-
-        intent.flags =
-            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            id,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                    PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notificacion = NotificationCompat.Builder(
-            this,
-            canalAlertas
-        )
+    private fun avisar(mensaje: String) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificacion = Notification.Builder(this, "serverguard_alertas")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(titulo)
+            .setContentTitle("Alerta en sala de servidores")
             .setContentText(mensaje)
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText(mensaje)
-            )
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setStyle(Notification.BigTextStyle().bigText(mensaje))
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
             .build()
-
-        try {
-            NotificationManagerCompat.from(this)
-                .notify(id, notificacion)
-
-        } catch (error: SecurityException) {
-
-            Toast.makeText(
-                this,
-                "No hay permiso para mostrar notificaciones",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        manager.notify(1001, notificacion)
     }
 
-    // ==========================================
-    // DETECTAR ALERTAS NUEVAS
-    // ==========================================
-
-    private fun comprobarAlertasNuevas() {
-
-        val temperaturaAlta =
-            temperatura > temperaturaMaxima
-
-        // Evitar notificaciones duplicadas al abrir el panel
-        if (estadoAnteriorTemperatura == null) {
-            estadoAnteriorTemperatura = temperaturaAlta
-
-        } else {
-
-            if (temperaturaAlta &&
-                estadoAnteriorTemperatura == false
-            ) {
-
-                val mensaje = String.format(
-                    Locale.getDefault(),
-                    "Temperatura de %.1f °C. " +
-                            "Ventilador activado automáticamente.",
-                    temperatura
-                )
-
-                mostrarNotificacion(
-                    idTemperatura,
-                    "ServerGuard: temperatura elevada",
-                    mensaje
-                )
-            }
-
-            estadoAnteriorTemperatura = temperaturaAlta
+    private fun guardarLimites() {
+        val minima = editMin.text.toString().trim().replace(',', '.').toDoubleOrNull()
+        val maxima = editMax.text.toString().trim().replace(',', '.').toDoubleOrNull()
+        if (minima == null || maxima == null || minima < -40.0 ||
+            minima > 80.0 || maxima < -40.0 || maxima > 80.0 || minima >= maxima
+        ) {
+            Toast.makeText(this, "Usa límites válidos (-40 a 80 °C) y mínima menor a máxima",
+                Toast.LENGTH_LONG).show()
+            return
         }
-
-        // Detectar apertura del rack
-        if (estadoAnteriorRack == null) {
-            estadoAnteriorRack = rackAbierto
-
-        } else {
-
-            if (rackAbierto &&
-                estadoAnteriorRack == false
-            ) {
-
-                mostrarNotificacion(
-                    idRack,
-                    "ServerGuard: alerta de seguridad",
-                    "Se ha detectado la apertura del rack."
-                )
-            }
-
-            estadoAnteriorRack = rackAbierto
-        }
+        btnGuardar.isEnabled = false
+        configuracion.updateChildren(
+            mapOf("temperatura_minima" to minima, "temperatura_maxima" to maxima)
+        ).addOnSuccessListener {
+            Toast.makeText(this, "Límites guardados; ESP32 debe leerlos", Toast.LENGTH_LONG).show()
+        }.addOnFailureListener { error ->
+            Toast.makeText(this, "Error: ${error.localizedMessage}", Toast.LENGTH_LONG).show()
+        }.addOnCompleteListener { btnGuardar.isEnabled = conectadoFirebase }
     }
-
-    // ==========================================
-    // ESCUCHAR FIREBASE
-    // ==========================================
 
     override fun onStart() {
         super.onStart()
-
-        if (::referenciaSala.isInitialized) {
-            escucharFirebase()
-        }
-    }
-
-    private fun escucharFirebase() {
-
-        if (listenerSala != null) return
-
-        listenerSala = object : ValueEventListener {
-
+        if (!::telemetria.isInitialized) return
+        conexionListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-
-                if (!snapshot.exists()) {
-
-                    datosCargados = true
-                    actualizarBotones()
-
-                    txtEstadoGeneral.text =
-                        "ESTADO: SIN LECTURAS"
-
-                    txtAlerta.text =
-                        "Presiona GENERAR NUEVA LECTURA."
-
-                    return
-                }
-
-                val temp = snapshot.child("temperatura")
-                    .getValue(Double::class.java)
-
-                val hum = snapshot.child("humedad")
-                    .getValue(Int::class.java)
-
-                val rack = snapshot.child("rackAbierto")
-                    .getValue(Boolean::class.java)
-
-                val fecha = snapshot.child("ultimaActualizacion")
-                    .getValue(Long::class.java)
-
-                if (temp == null ||
-                    hum == null ||
-                    rack == null
-                ) {
-                    txtAlerta.text =
-                        "Error: mediciones incompletas."
-                    return
-                }
-
-                temperatura = temp
-                humedad = hum
-                rackAbierto = rack
-
-                datosCargados = true
-
-                actualizarPantalla()
-                comprobarAlertasNuevas()
-                actualizarBotones()
-
-                if (fecha != null) {
-
-                    val formato = SimpleDateFormat(
-                        "dd/MM/yyyy HH:mm:ss",
-                        Locale.getDefault()
-                    )
-
-                    txtUltimaActualizacion.text =
-                        "Última actualización: " +
-                                formato.format(Date(fecha))
-                }
+                conectadoFirebase = snapshot.getValue(Boolean::class.java) == true
+                txtFirebase.text = if (conectadoFirebase) "Firebase: conectado"
+                                   else "Firebase: desconectado"
+                txtFirebase.setTextColor(Color.parseColor(
+                    if (conectadoFirebase) "#4ADE80" else "#F87171"))
+                btnGuardar.isEnabled = conectadoFirebase
             }
-
             override fun onCancelled(error: DatabaseError) {
-
-                datosCargados = false
-                actualizarBotones()
-
-                txtEstadoGeneral.text = "ESTADO: ERROR"
-
-                txtEstadoGeneral.setTextColor(
-                    Color.parseColor("#F87171")
-                )
-
-                txtAlerta.text =
-                    "Firebase: ${error.message}"
+                conectadoFirebase = false
+                txtFirebase.text = "Firebase: error de conexión"
+                btnGuardar.isEnabled = conectadoFirebase
             }
         }
+        conexionFirebase.addValueEventListener(conexionListener!!)
+        handler.removeCallbacks(refrescar)
+        handler.post(refrescar)
 
-        referenciaSala.addValueEventListener(listenerSala!!)
-    }
-
-    // ==========================================
-    // GENERAR NUEVA LECTURA
-    // ==========================================
-
-    private fun generarLectura() {
-
-        guardarMedicion(
-            Random.nextDouble(20.0, 36.0),
-            Random.nextInt(35, 76),
-            rackAbierto
-        )
-    }
-
-    // ==========================================
-    // CAMBIAR ESTADO DEL RACK
-    // ==========================================
-
-    private fun cambiarRack() {
-
-        guardarMedicion(
-            temperatura,
-            humedad,
-            !rackAbierto
-        )
-    }
-
-    // ==========================================
-    // GUARDAR MEDICIÓN E HISTORIAL
-    // ==========================================
-
-    private fun guardarMedicion(
-        nuevaTemperatura: Double,
-        nuevaHumedad: Int,
-        nuevoRack: Boolean
-    ) {
-
-        if (!datosCargados || guardando) return
-
-        guardando = true
-        actualizarBotones()
-
-        val ventilador =
-            nuevaTemperatura > temperaturaMaxima
-
-        val registro = hashMapOf<String, Any>(
-            "temperatura" to nuevaTemperatura,
-            "humedad" to nuevaHumedad,
-            "rackAbierto" to nuevoRack,
-            "ventiladorEncendido" to ventilador,
-            "ultimaActualizacion" to ServerValue.TIMESTAMP
-        )
-
-        val idRegistro = database
-            .child("historial")
-            .child("sala_principal")
-            .push()
-            .key
-
-        if (idRegistro == null) {
-            guardando = false
-            actualizarBotones()
-            mostrarMensaje("Error al generar el registro")
-            return
-        }
-
-        val actualizaciones = mapOf<String, Any>(
-            "salas/sala_principal" to registro,
-            "historial/sala_principal/$idRegistro" to registro
-        )
-
-        database.updateChildren(actualizaciones)
-            .addOnSuccessListener {
-
-                mostrarMensaje(
-                    "Medición e historial guardados"
-                )
-
+        telemetriaListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) {
+                    hayTelemetria = false
+                    txtEsp32.text = "ESP32: sin telemetría"
+                    txtFechaMedicion.text = "Última lectura: sin datos"
+                    actualizarAlerta()
+                    return
+                }
+                val t = snapshot.child("temperatura").value.let { it as? Number }?.toDouble()
+                val h = snapshot.child("humedad").value.let { it as? Number }?.toDouble()
+                val rack = snapshot.child("rack_abierto").getValue(Boolean::class.java)
+                val fan = snapshot.child("ventilador").getValue(Boolean::class.java)
+                val led = snapshot.child("led").getValue(Boolean::class.java)
+                val alarma = snapshot.child("alarma").getValue(Boolean::class.java)
+                val alerta = snapshot.child("alerta_activa").getValue(Boolean::class.java)
+                val declarado = snapshot.child("estado_conexion").getValue(String::class.java)
+                hayTelemetria = true
+                temperaturaActual = t
+                rackActual = rack
+                alarmaActual = alarma
+                alertaActual = alerta
+                // El ESP32 aún no manda heartbeat. No interpretar una etiqueta antigua
+                // como prueba de que Wokwi sigue conectado.
+                declaradoEsp32 = declarado
+                ultimaConexionEsp32 = (snapshot.child("ultima_conexion").value as? Number)?.toLong()
+                estadoEsp32()
+                txtFechaMedicion.text = ultimaConexionEsp32?.let { marca ->
+                    "Última telemetría declarada: " +
+                        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+                            .format(Date(marca))
+                } ?: "Última telemetría: sin marca de tiempo del dispositivo"
+                txtTemperatura.text = "Temperatura: " + (t?.let {
+                    String.format(Locale.getDefault(), "%.1f °C", it) } ?: "--")
+                txtHumedad.text = "Humedad: " + (h?.let {
+                    String.format(Locale.getDefault(), "%.1f %%", it) } ?: "--")
+                txtRack.text = "Rack: " + estado(rack, "ABIERTO", "CERRADO")
+                txtVentilador.text = "Ventilador: " + estado(fan, "ENCENDIDO", "APAGADO")
+                txtOtros.text = "LED: " + estado(led, "ON", "OFF") +
+                    " | Alarma: " + estado(alarma, "ACTIVA", "INACTIVA")
+                actualizarAlerta()
             }
-            .addOnFailureListener { error ->
-
-                mostrarMensaje(
-                    "Error de Firebase: ${error.localizedMessage}"
-                )
-
+            override fun onCancelled(error: DatabaseError) {
+                hayTelemetria = false
+                txtEsp32.text = "ESP32: no se pudo leer telemetría"
+                txtAlerta.text = "Firebase: ${error.message}"
             }
-            .addOnCompleteListener {
+        }
+        telemetria.addValueEventListener(telemetriaListener!!)
 
-                guardando = false
-                actualizarBotones()
+        configuracionListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val min = snapshot.child("temperatura_minima")
+                    .value.let { it as? Number }?.toDouble() ?: 18.0
+                val max = snapshot.child("temperatura_maxima")
+                    .value.let { it as? Number }?.toDouble() ?: 28.0
+                limiteMinimo = min
+                limiteMaximo = max
+                txtLimites.text = "Límites guardados: $min °C / $max °C"
+                actualizarAlerta()
+                // No sobrescribir la edición del usuario mientras escribe.
+                if (!editMin.hasFocus()) editMin.setText(min.toString())
+                if (!editMax.hasFocus()) editMax.setText(max.toString())
             }
+            override fun onCancelled(error: DatabaseError) {
+                limiteMinimo = null
+                limiteMaximo = null
+                txtLimites.text = "Error al consultar límites: ${error.message}"
+                actualizarAlerta()
+            }
+        }
+        configuracion.addValueEventListener(configuracionListener!!)
     }
 
-    // ==========================================
-    // ACTUALIZAR DASHBOARD
-    // ==========================================
+    private fun estado(valor: Boolean?, positivo: String, negativo: String): String =
+        when (valor) { true -> positivo; false -> negativo; null -> "SIN DATOS" }
 
-    private fun actualizarPantalla() {
-
-        txtTemperatura.text = String.format(
-            Locale.US,
-            "%.1f °C",
-            temperatura
-        )
-
-        txtHumedad.text = "$humedad %"
-
-        val ventilador =
-            temperatura > temperaturaMaxima
-
-        txtVentilador.text =
-            if (ventilador) "ENCENDIDO" else "APAGADO"
-
-        txtVentilador.setTextColor(
-            Color.parseColor(
-                if (ventilador) "#38BDF8" else "#94A3B8"
-            )
-        )
-
-        txtRack.text =
-            if (rackAbierto) "ABIERTO" else "CERRADO"
-
-        txtRack.setTextColor(
-            Color.parseColor(
-                if (rackAbierto) "#F87171" else "#4ADE80"
-            )
-        )
-
-        val alertas = mutableListOf<String>()
-
-        if (ventilador) {
-            alertas.add(
-                "ALERTA: Temperatura superior a 28 °C. " +
-                        "Ventilador activado."
-            )
-        }
-
-        if (rackAbierto) {
-            alertas.add(
-                "ALERTA DE SEGURIDAD: Rack abierto."
-            )
-        }
-
-        if (alertas.isEmpty()) {
-
-            txtEstadoGeneral.text = "ESTADO: NORMAL"
-
-            txtEstadoGeneral.setTextColor(
-                Color.parseColor("#4ADE80")
-            )
-
-            txtAlerta.text =
-                "Sistema funcionando normalmente."
-
-            txtAlerta.setTextColor(
-                Color.parseColor("#CBD5E1")
-            )
-
-        } else {
-
-            txtEstadoGeneral.text = "ESTADO: ALERTA"
-
-            txtEstadoGeneral.setTextColor(
-                Color.parseColor("#F87171")
-            )
-
-            txtAlerta.text =
-                alertas.joinToString("\n\n")
-
-            txtAlerta.setTextColor(
-                Color.parseColor("#FCA5A5")
-            )
-        }
-    }
-
-    // ==========================================
-    // ACTIVAR O DESACTIVAR BOTONES
-    // ==========================================
-
-    private fun actualizarBotones() {
-
-        val habilitar = datosCargados && !guardando
-
-        btnSimular.isEnabled = habilitar
-        btnRack.isEnabled = habilitar
-    }
-
-    // ==========================================
-    // VOLVER AL LOGIN
-    // ==========================================
-
-    private fun volverAlLogin() {
-
-        val intent = Intent(
-            this,
-            MainActivity::class.java
-        )
-
-        intent.flags =
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TASK
-
+    private fun irAlLogin() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         startActivity(intent)
         finish()
     }
 
-    // ==========================================
-    // MENSAJES
-    // ==========================================
-
-    private fun mostrarMensaje(mensaje: String) {
-
-        Toast.makeText(
-            this,
-            mensaje,
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-
-    // ==========================================
-    // LIBERAR FIREBASE
-    // ==========================================
-
     override fun onStop() {
         super.onStop()
-
-        if (::referenciaSala.isInitialized) {
-            listenerSala?.let {
-                referenciaSala.removeEventListener(it)
-            }
+        handler.removeCallbacks(refrescar)
+        if (::conexionFirebase.isInitialized) {
+            conexionListener?.let { conexionFirebase.removeEventListener(it) }
+            telemetriaListener?.let { telemetria.removeEventListener(it) }
+            configuracionListener?.let { configuracion.removeEventListener(it) }
         }
-
-        listenerSala = null
-
-        // Al reabrir, reconocer el estado inicial
-        // sin repetir notificaciones antiguas.
-        estadoAnteriorTemperatura = null
-        estadoAnteriorRack = null
+        conexionListener = null
+        telemetriaListener = null
+        configuracionListener = null
     }
 }
